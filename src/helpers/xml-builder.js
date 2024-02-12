@@ -480,103 +480,47 @@ const buildRun = async (vNode, attributes, docxDocumentInstance) => {
       'pre',
     ].includes(vNode.tagName)
   ) {
-    const runFragmentsArray = [];
+    const formattingAttributesMap = {
+      strong: { strong: true },
+      b: { strong: true },
+      em: { i: true },
+      i: { i: true },
+      u: { u: true },
+      ins: { u: true },
+      strike: { s: true },
+      del: { s: true },
+      s: { s: true },
+      sub: { sub: true },
+      sup: { sup: true },
+      mark: {},
+      blockquote: {},
+      code: {},
+      pre: {},
+    };
 
-    let vNodes = [vNode];
-    // create temp run fragments to split the paragraph into different runs
-    let tempAttributes = cloneDeep(attributes);
-    let tempRunFragment = fragment({ namespaceAlias: { w: namespaces.w } }).ele('@w', 'r');
-    while (vNodes.length) {
-      const tempVNode = vNodes.shift();
-      if (isVText(tempVNode)) {
-        const textFragment = buildTextElement(tempVNode.text);
-        const tempRunPropertiesFragment = buildRunProperties({ ...attributes, ...tempAttributes });
-        tempRunFragment.import(tempRunPropertiesFragment);
-        tempRunFragment.import(textFragment);
-        runFragmentsArray.push(tempRunFragment);
-
-        // re initialize temp run fragments with new fragment
-        tempAttributes = cloneDeep(attributes);
-        tempRunFragment = fragment({ namespaceAlias: { w: namespaces.w } }).ele('@w', 'r');
-      } else if (isVNode(tempVNode)) {
-        if (
-          [
-            'strong',
-            'b',
-            'em',
-            'i',
-            'u',
-            'ins',
-            'strike',
-            'del',
-            's',
-            'sub',
-            'sup',
-            'mark',
-            'code',
-            'pre',
-          ].includes(tempVNode.tagName)
-        ) {
-          tempAttributes = {};
-          switch (tempVNode.tagName) {
-            case 'strong':
-            case 'b':
-              tempAttributes.strong = true;
-              break;
-            case 'i':
-              tempAttributes.i = true;
-              break;
-            case 'u':
-              tempAttributes.u = true;
-              break;
-            case 'sub':
-              tempAttributes.sub = true;
-              break;
-            case 'sup':
-              tempAttributes.sup = true;
-              break;
-          }
-          const formattingFragment = buildFormatting(tempVNode);
-
-          if (formattingFragment) {
-            runPropertiesFragment.import(formattingFragment);
-          }
-          // go a layer deeper if there is a span somewhere in the children
-        } else if (tempVNode.tagName === 'span') {
-          // eslint-disable-next-line no-use-before-define
-          const spanFragment = await buildRunOrRuns(
-            tempVNode,
-            { ...attributes, ...tempAttributes },
-            docxDocumentInstance
-          );
-
-          // if spanFragment is an array, we need to add each fragment to the runFragmentsArray. If the fragment is an array, perform a depth first search on the array to add each fragment to the runFragmentsArray
-          if (Array.isArray(spanFragment)) {
-            spanFragment.flat(Infinity);
-            runFragmentsArray.push(...spanFragment);
-          } else {
-            runFragmentsArray.push(spanFragment);
-          }
-
-          // do not slice and concat children since this is already accounted for in the buildRunOrRuns function
-          // eslint-disable-next-line no-continue
-          continue;
-        }
-      }
-
-      if (tempVNode.children && tempVNode.children.length) {
-        if (tempVNode.children.length > 1) {
-          attributes = { ...attributes, ...tempAttributes };
-        }
-
-        vNodes = tempVNode.children.slice().concat(vNodes);
-      }
+    let tempAttributes = { ...attributes };
+    if (formattingAttributesMap[vNode.tagName]) {
+      tempAttributes = { ...tempAttributes, ...formattingAttributesMap[vNode.tagName] };
     }
-    if (runFragmentsArray.length) {
-      return runFragmentsArray;
-    }
+
+    const tempRunFragment = fragment({ namespaceAlias: { w: namespaces.w } }).ele('@w', 'r');
+
+    // Use Promise.all to await all promises returned by buildRun
+    await Promise.all(
+      vNode.children.map(async (childNode) => {
+        const childFragments = await buildRun(childNode, tempAttributes, docxDocumentInstance);
+        if (Array.isArray(childFragments)) {
+          childFragments.forEach((childFragment) => tempRunFragment.import(childFragment));
+        } else {
+          tempRunFragment.import(childFragments);
+        }
+      })
+    );
+
+    return tempRunFragment;
   }
 
+  // If it's not a formatting tag, build the run fragment as before
   runFragment.import(runPropertiesFragment);
   if (isVText(vNode)) {
     const textFragment = buildTextElement(vNode.text);
@@ -623,6 +567,7 @@ const buildRun = async (vNode, attributes, docxDocumentInstance) => {
 
   return runFragment;
 };
+
 
 const buildRunOrRuns = async (vNode, attributes, docxDocumentInstance) => {
   if (isVNode(vNode) && vNode.tagName === 'span') {
