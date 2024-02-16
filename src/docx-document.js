@@ -99,7 +99,7 @@ async function generateSectionXML(vTree, type = 'header') {
     const pageNumberElement = fragment({ namespaceAlias: { w: namespaces.w } })
     .ele('@w', 'p')
     .ele('@w', 'pPr')
-    .ele('@w', 'jc').att('@w', 'val', 'right').up() // Align left
+    .ele('@w', 'jc').att('@w', 'val', 'right').up()
     .up()
     .ele('@w', 'r')
     .ele('@w', 'br') // Line break
